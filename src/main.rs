@@ -5,6 +5,7 @@ use eframe::NativeOptions;
 
 mod app;
 mod device;
+mod utils;
 
 fn main() {
     let native_options = NativeOptions {
@@ -17,5 +18,4 @@ fn main() {
         Box::new(|_| Box::new(PlcControlWindow::new())),
     )
     .unwrap();
-    println!("{:?}", device::get_devices_list())
 }
