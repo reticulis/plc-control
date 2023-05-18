@@ -1,5 +1,7 @@
+use anyhow::Result;
+
 use std::{
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -10,15 +12,19 @@ use eframe::{
 };
 use strum::Display;
 
-use crate::{device::Device, utils::CValue};
+use crate::{
+    device::Device,
+    error::{PResult, PlcError},
+    utils::CValue,
+};
 
 #[derive(Default)]
 pub struct PlcControlWindow {
-    selected_device: Arc<RwLock<CValue<String>>>,
-    device: Arc<RwLock<Option<Device>>>,
+    selected_device: Arc<Mutex<String>>,
+    device: Option<Device>,
     command: String,
     text_buffer: CValue<Vec<String>>,
-    mode: Arc<RwLock<Mode>>,
+    mode: Arc<Mutex<Mode>>,
     send_mode: DataMode,
 }
 
@@ -42,27 +48,8 @@ impl PlcControlWindow {
 
         let selected = plc.selected_device.clone();
         let mode = plc.mode.clone();
-        let device = plc.device.clone();
-         
-        thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(500));
 
-            let devices = Device::get_devices_list().unwrap();
-
-            let selected = &mut *selected.write().unwrap();
-            let mode = &mut *mode.write().unwrap();
-            let device = &mut *device.write().unwrap();
-
-            if !&selected.is_empty() && !devices.contains(selected) {
-                **selected = String::new();
-                *mode = Mode::Connect;
-            } else if selected.is_empty() && !devices.is_empty() {
-                **selected = devices[0].to_owned()
-            } else if selected.is_changed() {
-                *mode = Mode::Connect;
-                
-            }
-        });
+        thread::spawn(move || update_device_list(selected, mode));
 
         plc
     }
@@ -70,44 +57,66 @@ impl PlcControlWindow {
 
 impl eframe::App for PlcControlWindow {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        if let Err(err) = build_ui(self, ctx) {
+            self.text_buffer.push(err.to_string())
+        }
+    }
+}
+
+fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(), PlcError> {
+    egui::CentralPanel::default()
+        .show(ctx, |ui| -> PResult<()> {
             ui.spacing_mut().item_spacing = Vec2::new(10., 10.);
 
-            ui.horizontal(|ui| {
+            ui.horizontal(|ui| -> PResult<()> {
                 ui.label("Select device:");
-                let selected = &mut *self.selected_device.write().unwrap();
-                let mode = &mut *self.mode.write().unwrap();
-                egui::ComboBox::from_label("")
-                    .selected_text(&**selected)
-                    .show_ui(ui, |ui| {
-                        for device in Device::get_devices_list().unwrap() {
-                            ui.selectable_value(&mut **selected, device.clone(), device);
-                        }
-                    });
+                let selected = &mut *app.selected_device.lock().unwrap();
+                let mode = &mut *app.mode.lock().unwrap();
+
+                ui.horizontal(|ui| -> PResult<()> {
+                    if *mode != Mode::Connect {
+                        ui.set_enabled(false)
+                    }
+
+                    egui::ComboBox::from_label("")
+                        .selected_text(&**selected)
+                        .show_ui(ui, |ui| -> PResult<()> {
+                            for device in Device::get_devices_list()? {
+                                ui.selectable_value(&mut *selected, device.clone(), device);
+                            }
+
+                            Ok(())
+                        });
+
+                    Ok(())
+                })
+                .inner?;
 
                 let btn = ui.button(&*mode.to_string());
                 if btn.clicked() {
                     if *mode == Mode::Connect {
                         if !selected.is_empty() {
-                            let device = Device::new(&*selected).unwrap();
+                            let device = Device::new(&*selected)?;
 
-                            self.text_buffer
-                                .push(format!("{} has been connected", **selected));
+                            app.text_buffer
+                                .push(format!("{} has been connected", *selected));
 
-                            self.device = Some(device);
+                            app.device = Some(device);
                             *mode = Mode::Disconnect
                         } else {
-                            self.text_buffer
-                                .push("Device isn't selected".to_string());
+                            app.text_buffer.push("Device isn't selected".to_string());
                         }
                     } else {
-                        self.text_buffer
-                            .push(format!("{} has been disconnected", **selected));
-                        self.device = None;
+                        app.text_buffer
+                            .push(format!("{} has been disconnected", *selected));
+                        app.device = None;
                         *mode = Mode::Connect
                     }
                 }
-            });
+
+                Ok(())
+            })
+            .inner?;
 
             ui.with_layout(Layout::top_down(eframe::emath::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(0., 0.);
@@ -120,37 +129,66 @@ impl eframe::App for PlcControlWindow {
                                 ui.set_width(ui.available_width());
                                 ui.set_min_height(ui.available_height());
                                 ui.with_layout(Layout::top_down(eframe::emath::Align::Min), |ui| {
-                                    for text in &*self.text_buffer {
+                                    for text in &*app.text_buffer {
                                         ui.label(text);
                                     }
                                 });
-                                if self.text_buffer.is_changed() {
-                                    ui.scroll_to_cursor(Some(eframe::emath::Align::BOTTOM));
+                                if app.text_buffer.is_changed() {
+                                    ui.scroll_to_cursor(None);
                                 }
-                                //
                             });
                     });
             });
 
             ui.horizontal(|ui| {
                 ui.label("Command");
-                ui.radio_value(&mut self.send_mode, DataMode::Hex, "Hex");
-                ui.radio_value(&mut self.send_mode, DataMode::Ascii, "Ascii");
+                ui.radio_value(&mut app.send_mode, DataMode::Hex, "Hex");
+                ui.radio_value(&mut app.send_mode, DataMode::Ascii, "Ascii");
             });
 
-            ui.horizontal(|ui| {
-                ui.text_edit_singleline(&mut self.command);
-                if ui.button("Send").clicked() && !self.command.is_empty() {
-                    if let Some(device) = &mut self.device {
-                        println!("{:?}", device.serial.name());
-                        device.send(&self.command, self.send_mode).unwrap();
+            ui.horizontal(|ui| -> PResult<()> {
+                let mode = &mut *app.mode.lock().unwrap();
 
-                        self.text_buffer.push(self.command.drain(..).collect());
-                        self.text_buffer
-                            .push(format!("{:?}", device.read().unwrap()))
+                ui.text_edit_singleline(&mut app.command);
+                if ui.button("Send").clicked()
+                    && !app.command.is_empty()
+                    && *mode == Mode::Disconnect
+                {
+                    if let Some(device) = &mut app.device {
+                        device.send(&app.command, app.send_mode)?;
+                        
+                        let command = format!("Command: {}", app.command.drain(..).collect::<String>());
+                        let received_data = format!("Received data: {:?}", device.read()?);
+
+                        app.text_buffer.push(command);
+                        app.text_buffer.push(received_data)
                     }
                 }
-            });
-        });
+
+                Ok(())
+            })
+            .inner?;
+
+            Ok(())
+        })
+        .inner?;
+    Ok(())
+}
+
+fn update_device_list(selected: Arc<Mutex<String>>, mode: Arc<Mutex<Mode>>) -> Result<()> {
+    loop {
+        thread::sleep(Duration::from_millis(500));
+
+        let devices = Device::get_devices_list()?;
+
+        let selected = &mut *selected.lock().unwrap();
+        let mode = &mut *mode.lock().unwrap();
+
+        if !&selected.is_empty() && !devices.contains(selected) {
+            *selected = String::new();
+            *mode = Mode::Connect;
+        } else if selected.is_empty() && !devices.is_empty() {
+            *selected = devices[0].to_owned()
+        }
     }
 }

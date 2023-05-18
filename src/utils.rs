@@ -16,13 +16,13 @@ impl<T> CValue<T> {
 
 impl<T> Deref for CValue<T> {
     type Target = T;
-    
+
     fn deref(&self) -> &Self::Target {
         &self.value
     }
 }
 
-impl <T> DerefMut for CValue<T> {
+impl<T> DerefMut for CValue<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.changed = true;
         &mut self.value

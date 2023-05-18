@@ -10,3 +10,4 @@ anyhow = "1.0.71"
 eframe = "0.21"
 serialport = "4.2.0"
 strum = { version = "0.24.1", features = ["derive"] }
+thiserror = "1.0"

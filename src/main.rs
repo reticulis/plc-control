@@ -5,6 +5,7 @@ use eframe::NativeOptions;
 
 mod app;
 mod device;
+mod error;
 mod utils;
 
 fn main() {
