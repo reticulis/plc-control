@@ -1,4 +1,5 @@
 use std::ops::{Deref, DerefMut};
+
 // Check if the value has been changed since the last use
 #[derive(Default)]
 pub struct CValue<T> {

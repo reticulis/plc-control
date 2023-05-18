@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serialport::{DataBits, Parity, StopBits};
 
 use std::{
     sync::{Arc, Mutex},
@@ -7,7 +8,7 @@ use std::{
 };
 
 use eframe::{
-    egui::{self, Layout},
+    egui::{self, ComboBox, DragValue, Layout, Ui},
     epaint::Vec2,
 };
 use strum::Display;
@@ -26,6 +27,8 @@ pub struct PlcControlWindow {
     text_buffer: CValue<Vec<String>>,
     mode: Arc<Mutex<Mode>>,
     send_mode: DataMode,
+    preferences: Preferences,
+    preferences_window: bool,
 }
 
 #[derive(Default, Display, PartialEq)]
@@ -42,9 +45,23 @@ pub enum DataMode {
     Ascii,
 }
 
+#[derive(Default)]
+pub struct Preferences {
+    baud_rate: u32,
+    data_bits: DataBits,
+    parity: Parity,
+    stop_bits: StopBits,
+}
+
 impl PlcControlWindow {
     pub fn new() -> PlcControlWindow {
-        let plc = PlcControlWindow::default();
+        let plc = PlcControlWindow {
+            preferences: Preferences {
+                baud_rate: 115_000,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let selected = plc.selected_device.clone();
         let mode = plc.mode.clone();
@@ -64,6 +81,49 @@ impl eframe::App for PlcControlWindow {
 }
 
 fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(), PlcError> {
+    egui::Window::new("Preferences")
+        .collapsible(false)
+        .open(&mut app.preferences_window)
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(10., 10.);
+            ui.horizontal(|ui| {
+                ui.label("Baud rate: ");
+                ui.add(DragValue::new(&mut app.preferences.baud_rate).speed(0.))
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Data bits: ");
+                create_combobox(
+                    ui,
+                    &mut app.preferences.data_bits,
+                    &[
+                        DataBits::Five,
+                        DataBits::Six,
+                        DataBits::Seven,
+                        DataBits::Eight,
+                    ],
+                );
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Stop bits: ");
+                create_combobox(
+                    ui,
+                    &mut app.preferences.stop_bits,
+                    &[StopBits::One, StopBits::Two],
+                );
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Parity: ");
+                create_combobox(
+                    ui,
+                    &mut app.preferences.parity,
+                    &[Parity::None, Parity::Odd, Parity::Even],
+                )
+            });
+        });
+
     egui::CentralPanel::default()
         .show(ctx, |ui| -> PResult<()> {
             ui.spacing_mut().item_spacing = Vec2::new(10., 10.);
@@ -114,6 +174,10 @@ fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(
                     }
                 }
 
+                if ui.button("Preferences").clicked() {
+                    app.preferences_window = true;
+                }
+
                 Ok(())
             })
             .inner?;
@@ -156,8 +220,9 @@ fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(
                 {
                     if let Some(device) = &mut app.device {
                         device.send(&app.command, app.send_mode)?;
-                        
-                        let command = format!("Command: {}", app.command.drain(..).collect::<String>());
+
+                        let command =
+                            format!("Command: {}", app.command.drain(..).collect::<String>());
                         let received_data = format!("Received data: {:?}", device.read()?);
 
                         app.text_buffer.push(command);
@@ -191,4 +256,18 @@ fn update_device_list(selected: Arc<Mutex<String>>, mode: Arc<Mutex<Mode>>) -> R
             *selected = devices[0].to_owned()
         }
     }
+}
+
+fn create_combobox<'a, T: ToString + PartialEq + Copy>(
+    ui: &mut Ui,
+    data: &'a mut T,
+    array: &'a [T],
+) {
+    ComboBox::new(array.len(), "")
+        .selected_text(data.to_string())
+        .show_ui(ui, |ui| {
+            for a in array {
+                ui.selectable_value(data, *a, a.to_string());
+            }
+        });
 }
