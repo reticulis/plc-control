@@ -1,17 +1,17 @@
 use serialport::*;
 
-use crate::{app::DataMode, error::PResult};
+use crate::{app::{DataMode, Preferences}, error::PResult};
 
 pub struct Device {
     pub serial: Box<dyn SerialPort>,
 }
 
 impl Device {
-    pub fn new(port: &str) -> PResult<Self> {
-        let serial = serialport::new(port, 115_200)
-            .data_bits(DataBits::Eight)
-            .parity(Parity::Odd)
-            .stop_bits(StopBits::One)
+    pub fn new(port: &str, preferences: &Preferences) -> PResult<Self> {
+        let serial = serialport::new(port, preferences.baud_rate)
+            .data_bits(preferences.data_bits)
+            .parity(preferences.parity)
+            .stop_bits(preferences.stop_bits)
             .open()?;
 
         Ok(Self { serial })

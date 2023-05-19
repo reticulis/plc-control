@@ -47,10 +47,10 @@ pub enum DataMode {
 
 #[derive(Default)]
 pub struct Preferences {
-    baud_rate: u32,
-    data_bits: DataBits,
-    parity: Parity,
-    stop_bits: StopBits,
+    pub baud_rate: u32,
+    pub data_bits: DataBits,
+    pub parity: Parity,
+    pub stop_bits: StopBits,
 }
 
 impl PlcControlWindow {
@@ -156,7 +156,7 @@ fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(
                 if btn.clicked() {
                     if *mode == Mode::Connect {
                         if !selected.is_empty() {
-                            let device = Device::new(&*selected)?;
+                            let device = Device::new(&*selected, &app.preferences)?;
 
                             app.text_buffer
                                 .push(format!("{} has been connected", *selected));
