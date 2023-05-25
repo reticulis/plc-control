@@ -11,3 +11,4 @@ eframe = "0.21"
 serialport = { git = "https://github.com/reticulis/serialport-rs.git", branch = "strum" }
 strum = { version = "0.24.1", features = ["derive"] }
 thiserror = "1.0"
+crc = "3"

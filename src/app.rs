@@ -27,6 +27,7 @@ pub struct PlcControlWindow {
     text_buffer: CValue<Vec<String>>,
     mode: Arc<Mutex<Mode>>,
     send_mode: DataMode,
+    crc: bool,
     preferences: Preferences,
     preferences_window: bool,
 }
@@ -225,12 +226,13 @@ fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(
                 let mode = &mut *app.mode.lock().unwrap();
 
                 ui.text_edit_singleline(&mut app.command);
+                ui.checkbox(&mut app.crc, "Crc");
                 if ui.button("Send").clicked()
                     && !app.command.is_empty()
                     && *mode == Mode::Disconnect
                 {
                     if let Some(device) = &mut app.device {
-                        device.send(&app.command, app.send_mode)?;
+                        device.send(&app.command, app.send_mode, app.crc)?;
 
                         let command =
                             format!("Command: {}", app.command.drain(..).collect::<String>());

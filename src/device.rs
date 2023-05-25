@@ -5,6 +5,7 @@ use serialport::*;
 use crate::{
     app::{DataMode, Preferences},
     error::PResult,
+    utils::PushCrc,
 };
 
 pub struct Device {
@@ -23,9 +24,9 @@ impl Device {
         Ok(Self { serial })
     }
 
-    pub fn send(&mut self, data: &str, data_type: DataMode) -> PResult<()> {
+    pub fn send(&mut self, data: &str, data_type: DataMode, crc: bool) -> PResult<()> {
         match data_type {
-            DataMode::Hex => self.serial.write_all(&str_to_hex(data)?)?,
+            DataMode::Hex => self.serial.write_all(&str_to_hex(data)?.push_crc(crc))?,
             _ => self.serial.write_all(data.as_bytes())?,
         }
 
