@@ -51,6 +51,7 @@ pub struct Preferences {
     pub data_bits: DataBits,
     pub parity: Parity,
     pub stop_bits: StopBits,
+    pub timeout: f32,
 }
 
 impl PlcControlWindow {
@@ -58,6 +59,7 @@ impl PlcControlWindow {
         let plc = PlcControlWindow {
             preferences: Preferences {
                 baud_rate: 115_000,
+                timeout: 1.0,
                 ..Default::default()
             },
             ..Default::default()
@@ -120,6 +122,15 @@ fn build_ui(app: &mut PlcControlWindow, ctx: &eframe::egui::Context) -> Result<(
                     ui,
                     &mut app.preferences.parity,
                     &[Parity::None, Parity::Odd, Parity::Even],
+                )
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Timeout (millis): ");
+                ui.add(
+                    DragValue::new(&mut app.preferences.timeout)
+                        .fixed_decimals(2)
+                        .speed(0.),
                 )
             });
         });

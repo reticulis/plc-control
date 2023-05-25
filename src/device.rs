@@ -1,6 +1,11 @@
+use std::time::Duration;
+
 use serialport::*;
 
-use crate::{app::{DataMode, Preferences}, error::PResult};
+use crate::{
+    app::{DataMode, Preferences},
+    error::PResult,
+};
 
 pub struct Device {
     pub serial: Box<dyn SerialPort>,
@@ -12,6 +17,7 @@ impl Device {
             .data_bits(preferences.data_bits)
             .parity(preferences.parity)
             .stop_bits(preferences.stop_bits)
+            .timeout(Duration::from_micros((preferences.timeout * 1000.) as u64))
             .open()?;
 
         Ok(Self { serial })
